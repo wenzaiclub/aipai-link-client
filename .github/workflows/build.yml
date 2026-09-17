@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 打 tag 时要建 Release、传产物，需要写权限；默认的 GITHUB_TOKEN 是只读的
+permissions:
+  contents: write
+
 jobs:
   # ------------------------------------------------------------------
   # Windows：WPF 客户端，单文件发布
