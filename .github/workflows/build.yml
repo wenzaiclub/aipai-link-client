@@ -29,12 +29,25 @@ jobs:
           --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish
 
+      - name: Fetch EasyTier engine
+        shell: pwsh
+        run: ./tools/fetch-engine.ps1 -OutDir stage/engine
+
+      - name: Pack (exe + engine + docs)
+        shell: pwsh
+        run: |
+          Copy-Item publish\AiPaiLink.exe stage\AiPaiLink.exe
+          Copy-Item THIRD_PARTY_NOTICES.md stage\
+          Copy-Item docs\windows-使用说明.txt stage\使用说明.txt
+          Compress-Archive -Path stage\* -DestinationPath AiPaiLink-win-x64.zip
+
       # 把要分发的产物单独放一个目录：只签这个目录里的东西
       - name: Collect artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts | Out-Null
           Copy-Item publish\AiPaiLink.exe artifacts\
+          Copy-Item AiPaiLink-win-x64.zip artifacts\
           Copy-Item THIRD_PARTY_NOTICES.md artifacts\
           Copy-Item docs\windows-使用说明.txt artifacts\
 
