@@ -1,0 +1,22 @@
+# build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# publish output
+publish/
+dist/
+*.zip
+*.exe
+
+# local secrets / machine specific
+appsettings.local.json
+*.pfx
+*.snk
+sign-cert/
+
+# os
+Thumbs.db
+.DS_Store
