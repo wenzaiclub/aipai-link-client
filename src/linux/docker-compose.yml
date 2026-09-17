@@ -1,0 +1,35 @@
+# 艾派互联 · 飞牛 NAS / Docker 部署
+#
+# 用法：
+#   1) 把 aipai 程序和 engine 目录放到本文件同级的 app/ 里
+#   2) 改下面的账号信息
+#   3) docker compose up -d
+#
+# 注意：network_mode 必须是 host，组网网卡才会建在飞牛主机上（而不是容器里）
+services:
+  aipai:
+    image: debian:bookworm-slim
+    container_name: aipai
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    working_dir: /app
+    environment:
+      TZ: Asia/Shanghai
+      # ↓↓↓ 改成你自己的账号信息 ↓↓↓
+      AIPAI_USER: "你的账号"
+      AIPAI_PASSWORD: "你的密码"
+      # 适配码（8位）或组网名称，留空则连接上次用过的组网
+      AIPAI_NETWORK: "适配码"
+      # 这台设备在客户端里的名字
+      AIPAI_DEVICE_NAME: "飞牛NAS"
+    volumes:
+      # app 目录里放 aipai、engine/easytier-core、engine/easytier-cli
+      - ./app:/app
+      # 保存登录状态和设备标识，删了固定IP会变，别删
+      - ./data:/root/.config/aipai
+    command: ["/app/aipai", "connect"]

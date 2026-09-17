@@ -1,0 +1,16 @@
+appname               = AipaiNet
+version               = 1.0.2
+display_name          = 艾派互联
+desc                  = 异地组网客户端。把这台设备加入你自己的虚拟局域网，和其它设备像在同一个局域网里一样互联：P2P 直连优先、打洞失败自动走中继，组网内全端口互通，可开服联机、共享文件与打印机。本应用提供网页管理面板，浏览器里就能接入/断开组网、查看链路。
+platform              = x86
+source                = thirdparty
+maintainer            = 艾派互联
+maintainer_url        = https://net.appiie.cn
+distributor           = 艾派互联
+distributor_url       = https://net.appiie.cn
+os_min_version        = 1.0.0
+desktop_uidir         = ui
+desktop_applaunchname = AipaiNet.Application
+ctl_stop              = true
+service_port          = 8787
+changelog             = v1.0.1 品牌更名「艾派互联」，版本号从 1.0.0 开始；面板可查看操作日志与引擎日志，支持切换行数、自动刷新、复制和下载

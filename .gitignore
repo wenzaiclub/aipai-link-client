@@ -10,12 +10,26 @@ publish/
 dist/
 *.zip
 *.exe
+*.tar.gz
 
 # local secrets / machine specific
 appsettings.local.json
 *.pfx
 *.snk
 sign-cert/
+
+# android / gradle
+local.properties
+keystore.properties
+*.jks
+*.keystore
+.gradle/
+.cxx/
+captures/
+src/android/app/build/
+
+# 组网引擎（LGPL-3.0，自行下载：tools/fetch-engine.*）
+engine/
 
 # os
 Thumbs.db

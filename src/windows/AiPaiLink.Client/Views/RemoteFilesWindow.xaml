@@ -1,0 +1,253 @@
+<Window x:Class="AiPai.Compact.Views.RemoteFilesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="远程文件" Width="820" Height="560"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" WindowStartupLocation="Manual" ShowInTaskbar="True"
+        KeyDown="Win_KeyDown" FontFamily="{StaticResource UiFont}">
+    <Border CornerRadius="12" Background="{StaticResource PanelBg}"
+            BorderBrush="#FF33455F" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏 -->
+            <Grid Grid.Row="0" Background="{StaticResource PanelBg2}" MouseLeftButtonDown="Title_MouseDown">
+                <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="远程文件" Style="{StaticResource TxtTitle}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Margin="0,0,6,0">
+                    <Button x:Name="BtnRefresh" Style="{StaticResource BtnIcon}" Content="⟳"
+                            Click="Refresh_Click" ToolTip="刷新" />
+                    <Button Style="{StaticResource BtnIcon}" Content="✕" Click="Close_Click" ToolTip="关闭 (Esc)" />
+                </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="154" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ① 左侧栏 -->
+                <Border Grid.Column="0" Background="{StaticResource PanelBg2}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Margin="14,12,14,10">
+                            <TextBlock Text="艾派互联" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" />
+                            <TextBlock x:Name="TxtSideUser" Text="· 未登录" FontSize="12" Margin="0,4,0,0"
+                                       Foreground="{StaticResource TextSecond}" />
+                        </StackPanel>
+
+                        <Border Grid.Row="1" Height="1" Background="{StaticResource LineBrush}" Margin="10,0" />
+
+                        <StackPanel Grid.Row="2" Margin="8,10,8,0">
+                            <Button x:Name="NavShare" Tag="share" Click="Nav_Click" Cursor="Hand"
+                                    Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left"
+                                    Padding="8,9">
+                                <TextBlock x:Name="NavShareText" Text="共享文件" FontSize="14"
+                                           Foreground="{StaticResource TextPrimary}" />
+                            </Button>
+                            <Button x:Name="NavPrinter" Tag="printer" Click="Nav_Click" Cursor="Hand"
+                                    Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left"
+                                    Padding="8,9">
+                                <TextBlock x:Name="NavPrinterText" Text="打印机共享" FontSize="14"
+                                           Foreground="{StaticResource TextSecond}" />
+                            </Button>
+                            <Button x:Name="NavBrowse" Tag="browse" Click="Nav_Click" Cursor="Hand"
+                                    Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left"
+                                    Padding="8,9">
+                                <TextBlock x:Name="NavBrowseText" Text="文件浏览" FontSize="14"
+                                           Foreground="{StaticResource TextSecond}" />
+                            </Button>
+                            <Button x:Name="NavTransfer" Tag="transfer" Click="Nav_Click" Cursor="Hand"
+                                    Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left"
+                                    Padding="8,9">
+                                <TextBlock x:Name="NavTransferText" Text="传输" FontSize="14"
+                                           Foreground="{StaticResource TextSecond}" />
+                            </Button>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="3" Text="v1.0.0" FontSize="11" Margin="14,0,14,12"
+                                   Foreground="{StaticResource TextDim}" />
+                    </Grid>
+                </Border>
+
+                <!-- ② 共享文件 -->
+                <Grid x:Name="PaneShare" Grid.Column="1" Margin="14,12,14,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtSharePageTitle" Text="本机共享" FontSize="14" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Foreground="{StaticResource TextPrimary}" />
+                            <Button x:Name="BtnGoBrowse" Content="看别人的共享 →" Height="26" FontSize="12"
+                                    Width="122" Margin="10,0,0,0" Style="{StaticResource BtnGhost}"
+                                    Click="GoBrowse_Click"
+                                    ToolTip="切到「文件浏览」，选中设备后就能把对方的共享一键映射成本地盘" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock Text="启用共享" FontSize="13" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextSecond}" Margin="0,0,8,0" />
+                            <ToggleButton x:Name="SwShare" Style="{StaticResource Switch}" Click="Share_Toggled" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Grid.Row="1" Background="{StaticResource CardBg}" CornerRadius="9" Padding="11,8"
+                            Margin="0,10,0,0" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="共享账号" FontSize="12.5" Foreground="{StaticResource TextDim}"
+                                           VerticalAlignment="Center" />
+                                <TextBox x:Name="TxtShareUser" Style="{StaticResource Input}" Width="96" Height="28"
+                                         FontSize="13.5" FontFamily="Consolas" Margin="10,0,0,0"
+                                         ToolTip="共享账号名（本机会用它建一个专用账号）" />
+                                <TextBlock Text="/" FontSize="13.5" Margin="6,0,6,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextDim}" />
+                                <TextBox x:Name="TxtSharePass" Style="{StaticResource Input}" Width="112" Height="28"
+                                         FontSize="13.5" FontFamily="Consolas"
+                                         ToolTip="共享密码" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="一键设置" Width="84" Height="28" FontSize="12.5"
+                                        Style="{StaticResource BtnPrimary}" Click="SetupShareAccount_Click"
+                                        ToolTip="在本机创建/更新这个共享账号，并放开共享相关的系统设置" />
+                                <Button Content="复制账号" Width="78" Height="28" FontSize="12.5" Margin="6,0,0,0"
+                                        Style="{StaticResource BtnGhost}" Click="CopyShareUser_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2" Margin="0,12,0,6">
+                        <TextBlock x:Name="TxtShareTitle" Text="本机文件夹" FontSize="14" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Foreground="{StaticResource TextPrimary}" />
+                        <Button x:Name="BtnAddFolder" Content="+ 添加文件夹" HorizontalAlignment="Right" Height="28"
+                                Width="112" FontSize="12.5" Style="{StaticResource BtnPrimary}"
+                                Click="AddFolder_Click" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ShareList" />
+                    </ScrollViewer>
+
+                    <TextBlock x:Name="TxtShareTip" Grid.Row="4" Text="" FontSize="12.5" TextWrapping="Wrap"
+                               Margin="0,8,0,0" Foreground="{StaticResource TextSecond}" />
+                </Grid>
+
+                <!-- ③ 打印机共享 -->
+                <Grid x:Name="PanePrinter" Grid.Column="1" Margin="14,12,14,12" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <TextBlock Text="本机打印机" FontSize="14" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Foreground="{StaticResource TextPrimary}" />
+                        <Button Content="刷新" Width="70" Height="28" FontSize="12.5"
+                                HorizontalAlignment="Right" Style="{StaticResource BtnGhost}"
+                                Click="RefreshPrinters_Click" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="1" Margin="0,8,0,6" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextDim}"
+                               Text="把本机打印机共享出去，队友在「共享文件」里选到你的设备、点「连接」就能装上这台打印机。" />
+
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="PrinterList" />
+                    </ScrollViewer>
+
+                    <TextBlock x:Name="TxtPrinterTip" Grid.Row="3" Text="" FontSize="12.5"
+                               TextWrapping="Wrap" Margin="0,8,0,0"
+                               Foreground="{StaticResource TextSecond}" />
+                </Grid>
+
+                <!-- ④ 文件浏览 -->
+                <Grid x:Name="PaneBrowse" Grid.Column="1" Margin="14,12,14,12" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <TextBlock x:Name="TxtPath" Text="" FontSize="13" VerticalAlignment="Center"
+                                   FontFamily="Consolas" Foreground="{StaticResource TextSecond}"
+                                   TextTrimming="CharacterEllipsis" Margin="0,0,240,0" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnUp" Content="⬆ 上一级" Height="28" Width="96" FontSize="12.5"
+                                    Style="{StaticResource BtnGhost}" Click="Up_Click" Margin="0,0,6,0" />
+                            <Button x:Name="BtnUpload" Content="上传到此处" Height="28" Width="110" FontSize="12.5"
+                                    Style="{StaticResource BtnPrimary}" Click="Upload_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="{StaticResource PanelBg2}" CornerRadius="9"
+                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Margin="0,0,8,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="组网内设备" FontSize="12.5" Margin="10,8,10,6"
+                                           Foreground="{StaticResource TextDim}" />
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="DeviceList" Margin="6,0,6,6" />
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Column="1" Background="{StaticResource PanelBg2}" CornerRadius="9"
+                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="FileList" Margin="8" />
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock x:Name="TxtBrowseTip" Grid.Row="2" Text="" FontSize="12.5" TextWrapping="Wrap"
+                               Margin="0,8,0,0" Foreground="{StaticResource TextSecond}" />
+                    <ProgressBar x:Name="Bar" Grid.Row="3" Height="3" Margin="0,8,0,0"
+                                 Background="Transparent" Foreground="{StaticResource AccentBrush}"
+                                 BorderThickness="0" Visibility="Collapsed" IsIndeterminate="True" />
+                </Grid>
+
+                <!-- ④ 传输 -->
+                <Grid x:Name="PaneTransfer" Grid.Column="1" Margin="14,12,14,12" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="传输记录" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimary}" />
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+                        <StackPanel x:Name="TransferList" />
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

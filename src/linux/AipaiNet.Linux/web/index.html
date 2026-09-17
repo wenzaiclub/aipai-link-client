@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>艾派互联 · 管理面板</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f2f4f8;color:#1f2937;font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif}
+.wrap{max-width:780px;margin:0 auto;padding:16px}
+.card{background:#fff;border:1px solid #e2e7ef;border-radius:12px;padding:16px;margin-bottom:14px}
+h1{font-size:17px;margin:0 0 6px}
+h2{font-size:14px;margin:0 0 10px;color:#64748b;font-weight:600}
+.sub{color:#64748b;font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input{height:34px;padding:0 10px;border:1px solid #d5dce6;border-radius:8px;font-size:14px;outline:none}
+input:focus{border-color:#2563eb}
+button{height:34px;padding:0 16px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;cursor:pointer}
+button.ghost{background:#fff;color:#334155;border:1px solid #d5dce6}
+button.danger{background:#dc2626}
+button:disabled{opacity:.45;cursor:not-allowed}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.on{background:#e7f8ee;color:#15803d}
+.off{background:#eef1f5;color:#64748b}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #eef1f5}
+th{color:#94a3b8;font-weight:500}
+tr.net{cursor:pointer}
+tr.net:hover{background:#f8fafc}
+tr.net.sel{background:#eff6ff}
+#msg{font-size:13px;color:#2563eb;min-height:18px;margin-top:10px}
+#logBox{font-family:Consolas,Menlo,monospace;font-size:12px;color:#475569;line-height:1.65;
+  white-space:pre-wrap;word-break:break-all;background:#f8fafc;border:1px solid #e2e7ef;
+  border-radius:8px;padding:10px;margin:10px 0 0;max-height:340px;overflow:auto}
+select{height:34px;padding:0 8px;border:1px solid #d5dce6;border-radius:8px;font-size:13px;background:#fff}
+label.chk{display:flex;align-items:center;gap:5px;font-size:13px;color:#475569}
+label.chk input{height:auto;width:auto}
+.tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;background:#eef4ff;color:#1d4ed8}
+.tag.relay{background:#fff4e5;color:#b45309}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">加载中…</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let S = null, sel = null, busy = false;
+// 草稿：自动刷新会重建 DOM，这里先把输入框里的内容存下来，避免把用户输的适配码刷没
+let draftName = '', draftCode = '';
+
+function captureDraft() {
+  const n = document.getElementById('newName');
+  const c = document.getElementById('joinCode');
+  if (n) draftName = n.value;
+  if (c) draftCode = c.value;
+}
+
+async function api(p, b) {
+  const r = await fetch(p, {
+    method: b ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    body: b ? JSON.stringify(b) : null
+  });
+  return r.json();
+}
+function msg(t, bad) {
+  const m = $('msg'); if (!m) return;
+  m.style.color = bad ? '#dc2626' : '#2563eb';
+  m.textContent = t || '';
+}
+function render() {
+  captureDraft();
+  if (!S.loggedIn) {
+    $('app').innerHTML =
+      '<div class="card" style="max-width:360px;margin:60px auto">' +
+      '<h1>艾派互联</h1>' +
+      '<div class="sub" style="margin-bottom:14px">登录你的账号来管理这台设备的组网</div>' +
+      '<input id="u" placeholder="账号" style="width:100%;margin-bottom:8px">' +
+      '<input id="p" type="password" placeholder="密码" style="width:100%;margin-bottom:12px">' +
+      '<button id="btnLogin" style="width:100%">登 录</button>' +
+      '<div id="msg"></div></div>';
+    $('btnLogin').onclick = login;
+    $('p').onkeydown = e => { if (e.key === 'Enter') login(); };
+    return;
+  }
+  const peers = (S.peers || []).map(p =>
+    '<tr><td>' + esc(p.host) + '</td><td>' + esc(p.ip) + '</td>' +
+    '<td><span class="tag ' + (p.link === '中继' ? 'relay' : '') + '">' + esc(p.link) + '</span></td>' +
+    '<td>' + esc(p.latency) + '</td><td>' + esc(p.loss) + '</td><td>' + esc(p.nat) + '</td></tr>').join('');
+  const nets = (S.networks || []).map(n =>
+    '<tr class="net ' + (sel === n.code ? 'sel' : '') + '" data-code="' + esc(n.code) + '">' +
+    '<td><b>' + esc(n.name) + '</b></td><td>' + esc(n.code) + '</td><td>' + esc(n.role) + '</td>' +
+    '<td>' + esc(n.ip || '-') + '</td><td>' + esc(n.serverLocation) + '</td></tr>').join('');
+
+  let html = '';
+  html += '<div class="card"><div class="row" style="justify-content:space-between">' +
+    '<div><h1>艾派互联 · 管理面板</h1><div class="sub">账号 ' + esc(S.user.username) +
+    ' · ' + esc(S.user.level) + ' · 到期 ' + esc(S.user.expire) + '</div></div>' +
+    '<button class="ghost" id="btnOut">退出登录</button></div></div>';
+
+  html += '<div class="card"><div class="row" style="justify-content:space-between">' +
+    '<div><span class="pill ' + (S.connected ? 'on' : 'off') + '">' +
+    (S.connected ? '● 已连接' : '○ 未连接') + '</span>' +
+    (S.connected ? '<span class="sub" style="margin-left:10px">本机固定IP ' + esc(S.myIp) + ' · ' + esc(S.nat) + '</span>' : '') +
+    '</div><div class="row">' +
+    '<button id="btnConnect"' + (S.connected ? ' disabled' : '') + '>接入组网</button>' +
+    '<button class="danger" id="btnDisc"' + (S.connected ? '' : ' disabled') + '>断开</button>' +
+    '</div></div><div id="msg">' + (sel ? '已选择：' + esc(sel) + '，点“接入组网”' : '') + '</div></div>';
+
+  html += '<div class="card"><div class="row" style="justify-content:space-between">' +
+    '<h2 style="margin:0">我的组网（点一行选中）</h2>' +
+    '<button class="ghost" id="btnRefresh" style="height:28px;font-size:12px;padding:0 12px">刷新组网</button>' +
+    '</div>' +
+    (nets
+      ? '<table><thead><tr><th>名称</th><th>适配码</th><th>角色</th><th>本机固定IP</th><th>节点</th></tr></thead><tbody>' + nets + '</tbody></table>'
+      : '<div class="sub">还没有组网，下面可以创建或用适配码加入</div>') +
+    '<div class="row" style="margin-top:12px">' +
+    '<input id="newName" placeholder="新组网名称" style="width:150px" value="' + esc(draftName) + '">' +
+    '<button class="ghost" id="btnCreate">创建组网</button>' +
+    '<input id="joinCode" placeholder="输入适配码加入" style="width:150px" value="' + esc(draftCode) + '">' +
+    '<button class="ghost" id="btnJoin">加入组网</button>' +
+    '</div></div>';
+
+  if (S.connected) {
+    html += '<div class="card"><h2>对端链路</h2>' +
+      (peers
+        ? '<table><thead><tr><th>设备</th><th>虚拟IP</th><th>链路</th><th>延迟</th><th>丢包</th><th>对方NAT</th></tr></thead><tbody>' + peers + '</tbody></table>'
+        : '<div class="sub">暂时没有对端</div>') + '</div>';
+  }
+  html += '<div class="card">' +
+    '<div class="row" style="justify-content:space-between">' +
+    '<h2 style="margin:0">日志</h2>' +
+    '<div class="row">' +
+    '<select id="logSource">' +
+    '<option value="client"' + (logSource === 'client' ? ' selected' : '') + '>面板操作日志</option>' +
+    '<option value="engine"' + (logSource === 'engine' ? ' selected' : '') + '>组网引擎日志</option>' +
+    '</select>' +
+    '<select id="logLines">' +
+    [100, 300, 800, 2000].map(n => '<option value="' + n + '"' +
+      (logLines === n ? ' selected' : '') + '>' + n + ' 行</option>').join('') +
+    '</select>' +
+    '<label class="chk"><input type="checkbox" id="logAuto"' +
+    (logAuto ? ' checked' : '') + '> 自动刷新</label>' +
+    '<button class="ghost" id="btnLogRefresh">刷新</button>' +
+    '<button class="ghost" id="btnLogCopy">复制</button>' +
+    '<button class="ghost" id="btnLogDownload">下载</button>' +
+    '</div></div>' +
+    '<div class="sub" id="logPath" style="margin-top:6px;font-size:12px">' +
+    (logPath ? '日志文件：' + esc(logPath) : '') + '</div>' +
+    '<pre id="logBox"></pre></div>';
+  $('app').innerHTML = html;
+
+  document.querySelectorAll('tr.net').forEach(tr => {
+    tr.onclick = () => { sel = tr.dataset.code; render(); };
+  });
+  $('btnOut').onclick = async () => {
+    await api('/api/logout', {});
+    S = null; sel = null; logLoaded = false; logCache = '';
+    await refresh();
+  };
+  $('btnRefresh').onclick = async () => {
+    msg('正在刷新组网列表…');
+    await refresh();
+    msg('已刷新');
+  };
+  // 记住输入内容，自动刷新不会清空
+  const nn = $('newName'), jc = $('joinCode');
+  if (nn) nn.oninput = () => { draftName = nn.value; };
+  if (jc) jc.oninput = () => { draftCode = jc.value; };
+  $('btnConnect').onclick = async () => {
+    busy = true; msg('正在接入，首次可能需要等一会…');
+    const r = await api('/api/connect', { network: sel || '' });
+    if (!r.ok) msg(r.error || '接入失败', 1);
+    busy = false; await refresh();
+  };
+  $('btnDisc').onclick = async () => { await api('/api/disconnect', {}); await refresh(); };
+  $('btnCreate').onclick = async () => {
+    const v = $('newName').value.trim(); if (!v) return msg('请输入名称', 1);
+    const r = await api('/api/create', { name: v });
+    if (!r.ok) return msg(r.error, 1);
+    draftName = ''; msg('已创建'); await refresh();
+  };
+  $('btnJoin').onclick = async () => {
+    const v = $('joinCode').value.trim(); if (!v) return msg('请输入适配码', 1);
+    const r = await api('/api/join', { code: v });
+    if (!r.ok) return msg(r.error, 1);
+    draftCode = ''; msg('已加入'); await refresh();
+  };
+
+  // 日志：换源/换行数就重新拉，自动刷新走独立的定时器
+  $('logSource').onchange = () => { logSource = $('logSource').value; loadLogs(); };
+  $('logLines').onchange = () => { logLines = parseInt($('logLines').value, 10) || 300; loadLogs(); };
+  $('logAuto').onchange = () => { logAuto = $('logAuto').checked; };
+  $('btnLogRefresh').onclick = () => loadLogs();
+  $('btnLogCopy').onclick = () => copyLog();
+  $('btnLogDownload').onclick = () => downloadLog();
+  paintLogs();
+  if (!logLoaded) { logLoaded = true; loadLogs(); }
+}
+
+/* ---------------- 日志 ---------------- */
+let logSource = 'client', logLines = 300, logAuto = true, logCache = '', logPath = '';
+let logLoaded = false;
+
+async function loadLogs() {
+  if (!S || !S.loggedIn) return;
+  try {
+    const r = await api('/api/logs?source=' + logSource + '&lines=' + logLines);
+    logCache = (r.lines || []).join('\n') || '（这里还没有内容）';
+    logPath = r.path || '';
+  } catch (e) {
+    logCache = '读取日志失败：' + (e && e.message ? e.message : e);
+  }
+  paintLogs();
+}
+
+// 只改文本，不重建 DOM，避免刷新时把滚动位置和选择一起冲掉
+function paintLogs() {
+  const box = $('logBox');
+  if (!box) return;
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 24;
+  box.textContent = logCache;
+  if (atBottom) box.scrollTop = box.scrollHeight;
+  const lp = $('logPath');
+  if (lp && logPath) lp.textContent = '日志文件：' + logPath;
+}
+
+function copyLog() {
+  const text = logCache;
+  // 面板是 http 打开的，navigator.clipboard 在非安全上下文里用不了，退回 textarea
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  msg(ok ? '日志已复制到剪贴板' : '复制失败，可以手动选中复制', !ok);
+}
+
+function downloadLog() {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const name = 'aipai-' + (logSource === 'engine' ? 'engine' : 'panel') + '-' + stamp + '.log';
+  const blob = new Blob([logCache], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 1000);
+}
+
+async function login() {
+  const m = $('msg');
+  m.style.color = '#2563eb';
+  m.textContent = '登录中…';
+  const r = await api('/api/login', { username: $('u').value.trim(), password: $('p').value });
+  if (!r.ok) { m.style.color = '#dc2626'; m.textContent = r.error || '登录失败'; return; }
+  sel = null;
+  await refresh();
+}
+async function refresh() {
+  try { S = await api('/api/state'); } catch (e) { S = { loggedIn: false }; }
+  render();
+}
+refresh();
+setInterval(() => { if (S && S.loggedIn && !busy) refresh(); }, 5000);
+// 日志单独刷新：只更新文本框内容，不动页面结构
+setInterval(() => { if (logAuto && S && S.loggedIn && !busy) loadLogs(); }, 5000);
+</script>
+</body>
+</html>

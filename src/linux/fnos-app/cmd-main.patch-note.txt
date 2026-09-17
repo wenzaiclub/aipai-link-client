@@ -1,0 +1,8 @@
+cmd/main 由 fnpack 模板生成后，只改了一行 CMD：
+
+  CMD="cd /var/apps/AipaiNet/target/server && HOME='${TRIM_PKGVAR}' ./aipai web --port 8787"
+
+说明：
+* 程序放在 app/server/，安装后位于 /var/apps/AipaiNet/target/server/
+* HOME 指到应用数据目录，登录状态和设备标识会跟着应用一起保留（重装/升级不丢，固定IP 不变）
+* 组网引擎需要 root（创建虚拟网卡），所以 config/privilege 用 run-as=root

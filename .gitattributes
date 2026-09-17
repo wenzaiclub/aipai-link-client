@@ -1,0 +1,17 @@
+# 仓库里统一存 LF；Windows 上检出源码时按需转换
+* text=auto
+
+# 这几个必须保持 LF，换行被转成 CRLF 会在 Linux/NAS 上直接跑不起来
+*.sh text eol=lf
+src/linux/fnos-app/cmd/main text eol=lf
+src/linux/fnos-app/app/ui/config text eol=lf
+src/linux/fnos-app/config/* text eol=lf
+src/linux/fnos-app/manifest text eol=lf
+docker-compose.yml text eol=lf
+
+# 二进制，别动
+*.png binary
+*.ico binary
+*.so binary
+*.jks binary
+*.jar binary

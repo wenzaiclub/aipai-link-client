@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>aipai</AssemblyName>
+    <RootNamespace>AppiieNet.Linux</RootNamespace>
+    <Version>1.0.2</Version>
+    <Product>艾派互联</Product>
+    <AssemblyTitle>艾派互联 Linux 客户端</AssemblyTitle>
+    <Description>艾派互联 Linux 命令行客户端</Description>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 与 Windows 客户端共用同一套接口模型和 API 客户端，直接编译仓库里那份，不复制 -->
+    <Compile Include="..\..\windows\AiPaiLink.Client\Shared\ApiModels.cs" Link="Shared\ApiModels.cs" />
+    <Compile Include="..\..\windows\AiPaiLink.Client\Shared\ApiClient.cs" Link="Shared\ApiClient.cs" />
+    <Compile Include="..\..\windows\AiPaiLink.Client\Shared\NodePicker.cs" Link="Shared\NodePicker.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 网页面板页面（编译进程序里） -->
+    <EmbeddedResource Include="web\index.html" />
+  </ItemGroup>
+</Project>

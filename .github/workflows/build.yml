@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ------------------------------------------------------------------
+  # Windows：WPF 客户端，单文件发布
+  # ------------------------------------------------------------------
   windows:
     runs-on: windows-latest
     steps:
@@ -18,23 +21,24 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Build
-        run: dotnet build src/AiPaiLink.Client/AiPaiLink.Client.csproj -c Release
+        run: dotnet build src/windows/AiPaiLink.Client/AiPaiLink.Client.csproj -c Release
 
       - name: Publish (single file, win-x64)
         run: >
-          dotnet publish src/AiPaiLink.Client/AiPaiLink.Client.csproj -c Release -r win-x64
+          dotnet publish src/windows/AiPaiLink.Client/AiPaiLink.Client.csproj -c Release -r win-x64
           --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish
 
       # 把要分发的产物单独放一个目录：只签这个目录里的东西
       - name: Collect artifacts
+        shell: pwsh
         run: |
-          mkdir artifacts
-          copy publish\AiPaiLink.exe artifacts\
-          copy THIRD_PARTY_NOTICES.md artifacts\
-          copy docs\使用说明.txt artifacts\
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Copy-Item publish\AiPaiLink.exe artifacts\
+          Copy-Item THIRD_PARTY_NOTICES.md artifacts\
+          Copy-Item docs\windows-使用说明.txt artifacts\
 
-      # ---- 代码签名（SignPath Foundation 批准后打开这段，并在仓库 Secrets 里配好三项）----
+      # ---- 代码签名（SignPath Foundation 批准后打开这段，并在仓库 Secrets 里配好四项）----
       # 需要的 Secrets：
       #   SIGNPATH_API_TOKEN      SignPath 里生成的 CI 用户 token
       #   SIGNPATH_ORG_ID         组织 ID
@@ -59,10 +63,98 @@ jobs:
           name: AiPaiLink-win-x64-unsigned
           path: artifacts/
 
-      # 打了 tag 时顺手发一个 Release（签名接好之后把 path 换成签名产物目录）
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
           generate_release_notes: true
+
+  # ------------------------------------------------------------------
+  # Linux / NAS：命令行 + 网页面板，自包含单文件，连引擎一起打包
+  # ------------------------------------------------------------------
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish (single file, linux-x64)
+        run: >
+          dotnet publish src/linux/AipaiNet.Linux/AipaiNet.Linux.csproj -c Release -r linux-x64
+          --self-contained true -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true -o dist/aipai
+
+      - name: Fetch EasyTier engine
+        run: |
+          chmod +x tools/fetch-engine.sh
+          ./tools/fetch-engine.sh dist/aipai/engine x86_64
+
+      - name: Pack
+        run: |
+          set -e
+          PKG="艾派互联-linux-x64"
+          rm -rf "dist/$PKG"
+          mkdir -p "dist/$PKG"
+          cp dist/aipai/aipai "dist/$PKG/"
+          cp -r dist/aipai/engine "dist/$PKG/engine"
+          cp src/linux/install.sh src/linux/install-online.sh "dist/$PKG/"
+          cp src/linux/README.md "dist/$PKG/使用说明.md"
+          cp "src/linux/飞牛NAS安装说明.md" "dist/$PKG/"
+          cp THIRD_PARTY_NOTICES.md "dist/$PKG/"
+          chmod +x "dist/$PKG/install.sh" "dist/$PKG/install-online.sh"
+          tar -czf "艾派互联-linux-x64.tar.gz" -C dist "$PKG"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: AiPaiLink-linux-x64
+          path: 艾派互联-linux-x64.tar.gz
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: 艾派互联-linux-x64.tar.gz
+
+  # ------------------------------------------------------------------
+  # Android：VpnService + EasyTier JNI，原生库已提交在 jniLibs/
+  # 没有证书时产出未签名 APK，只做编译验证
+  # ------------------------------------------------------------------
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager --install "platforms;android-35" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Assemble
+        working-directory: src/android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AiPaiLink-android-unsigned
+          path: src/android/app/build/outputs/apk/release/*.apk
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src/android/app/build/outputs/apk/release/*.apk

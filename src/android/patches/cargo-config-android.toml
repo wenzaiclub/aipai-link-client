@@ -1,0 +1,15 @@
+# 追加到 EasyTier/.cargo/config.toml 末尾。
+# 把下面 4 个路径换成你自己机器上的（NDK 版本按你实际装的改），
+# 全部用正斜杠，Windows 路径里的反斜杠 bindgen 会读错。
+
+# region Android (本地交叉编译)
+# bindgen 交叉编译时必须知道 NDK 的 sysroot 和 clang 内置头文件目录，
+# 否则 kcp-sys 找不到 stddef.h。
+[env]
+PROTOC_INCLUDE = "C:/tools/protoc-include"
+LIBCLANG_PATH = "C:/tools/libclang"
+BINDGEN_EXTRA_CLANG_ARGS_x86_64-linux-android = "--sysroot=C:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include/x86_64-linux-android -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/lib/clang/19/include --target=x86_64-linux-android24"
+BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android = "--sysroot=C:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include/x86_64-linux-android -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/lib/clang/19/include --target=x86_64-linux-android24"
+BINDGEN_EXTRA_CLANG_ARGS_aarch64-linux-android = "--sysroot=C:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include/aarch64-linux-android -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/lib/clang/19/include --target=aarch64-linux-android24"
+BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android = "--sysroot=C:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include/aarch64-linux-android -IC:/Android/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/lib/clang/19/include --target=aarch64-linux-android24"
+# endregion
