@@ -30,7 +30,7 @@ public sealed class ApiClient
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private HttpClient _http = NetClient.Create(TimeSpan.FromSeconds(20));
     private string _baseUrl;
 
     public ApiClient(string baseUrl)
@@ -58,6 +58,31 @@ public sealed class ApiClient
     {
         var sep = _baseUrl.Contains('?') ? "&" : "?";
         var url = _baseUrl + sep + "r=" + Uri.EscapeDataString(route);
+
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await SendAsync(url, body, token, ct);
+        }
+        catch (Exception ex) when (NetClient.LooksLikeProxyFailure(ex))
+        {
+            // 系统里配着代理，但代理连不上（最常见：代理软件关了、设置还留着）
+            // → 扔掉带代理的 HttpClient，改成直连重试一次
+            NetClient.SwitchToDirect();
+            _http.Dispose();
+            _http = NetClient.Create(TimeSpan.FromSeconds(20));
+            resp = await SendAsync(url, body, token, ct);
+        }
+
+        using (resp)
+        {
+            return await ReadAsync<T>(resp, ct);
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(string url, object? body, string? token,
+        CancellationToken ct)
+    {
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
         if (body != null)
         {
@@ -69,7 +94,11 @@ public sealed class ApiClient
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
 
-        using var resp = await _http.SendAsync(req, ct);
+        return await _http.SendAsync(req, ct);
+    }
+
+    private static async Task<T> ReadAsync<T>(HttpResponseMessage resp, CancellationToken ct)
+    {
         var text = await resp.Content.ReadAsStringAsync(ct);
         ApiEnvelope? envelope = null;
         try

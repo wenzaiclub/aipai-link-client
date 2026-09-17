@@ -44,22 +44,40 @@ public static class UpdateService
     {
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            var body = new StringContent("{}", Encoding.UTF8, "application/json");
-            var resp = await http.PostAsync(apiBaseUrl + "?r=client_update", body, ct);
-            var text = await resp.Content.ReadAsStringAsync(ct);
-            using var doc = JsonDocument.Parse(text);
-            if (!doc.RootElement.TryGetProperty("ok", out var ok) || !ok.GetBoolean())
+            return await CheckOnceAsync(apiBaseUrl, ct);
+        }
+        catch (Exception ex) when (NetClient.LooksLikeProxyFailure(ex))
+        {
+            // 系统代理连不上：改直连再试一次
+            NetClient.SwitchToDirect();
+            try
+            {
+                return await CheckOnceAsync(apiBaseUrl, ct);
+            }
+            catch
             {
                 return null;
             }
-            return JsonSerializer.Deserialize<UpdateInfo>(
-                doc.RootElement.GetProperty("data").GetRawText());
         }
         catch
         {
             return null;
         }
+    }
+
+    private static async Task<UpdateInfo?> CheckOnceAsync(string apiBaseUrl, CancellationToken ct)
+    {
+        using var http = NetClient.Create(TimeSpan.FromSeconds(15));
+        using var body = new StringContent("{}", Encoding.UTF8, "application/json");
+        using var resp = await http.PostAsync(apiBaseUrl + "?r=client_update", body, ct);
+        var text = await resp.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(text);
+        if (!doc.RootElement.TryGetProperty("ok", out var ok) || !ok.GetBoolean())
+        {
+            return null;
+        }
+        return JsonSerializer.Deserialize<UpdateInfo>(
+            doc.RootElement.GetProperty("data").GetRawText());
     }
 
     /// <summary>把 "v1.1.4" / "1.1.4" 解析成可比较的版本号</summary>
@@ -121,7 +139,7 @@ public static class UpdateService
         var zipPath = Path.Combine(work, "pkg.zip");
         progress?.Report((0, "正在下载安装包…"));
 
-        using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+        using (var http = NetClient.Create(TimeSpan.FromMinutes(10)))
         using (var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
         {
             resp.EnsureSuccessStatusCode();

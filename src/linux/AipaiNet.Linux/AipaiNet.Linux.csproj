@@ -16,6 +16,8 @@
     <!-- 与 Windows 客户端共用同一套接口模型和 API 客户端，直接编译仓库里那份，不复制 -->
     <Compile Include="..\..\windows\AiPaiLink.Client\Shared\ApiModels.cs" Link="Shared\ApiModels.cs" />
     <Compile Include="..\..\windows\AiPaiLink.Client\Shared\ApiClient.cs" Link="Shared\ApiClient.cs" />
+    <Compile Include="..\..\windows\AiPaiLink.Client\Shared\NetClient.cs" Link="Shared\NetClient.cs" />
+    <Compile Include="..\..\windows\AiPaiLink.Client\Shared\AppLog.cs" Link="Shared\AppLog.cs" />
     <Compile Include="..\..\windows\AiPaiLink.Client\Shared\NodePicker.cs" Link="Shared\NodePicker.cs" />
   </ItemGroup>
   <ItemGroup>
