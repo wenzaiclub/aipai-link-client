@@ -18,8 +18,11 @@ set -e
 
 BASE="https://net.appiie.cn"
 PKG_URL="$BASE/download/%E8%89%BE%E6%B4%BE%E4%BA%92%E8%81%94-linux-x64.tar.gz"
+BASE_TGZ_URL="$BASE/download/aipai-base-jammy.tar.xz"
 DIR=/opt/aipai-docker
-IMAGE="debian:bookworm-slim"
+IMAGE="debian:bookworm-slim"      # 首选：官方镜像（能拉就拉）
+LOCAL_IMAGE="aipai-base:jammy"    # 兜底：官网自带的基础镜像包，完全不走 Docker Hub
+RUN_IMAGE=""
 CNAME=aipai
 
 USER_ARG="${AIPAI_USER:-}"
@@ -115,14 +118,18 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 echo "==> 下载客户端…"
-if command -v curl >/dev/null 2>&1; then
-    curl -fL --connect-timeout 20 --retry 3 -o "$TMP/pkg.tar.gz" "$PKG_URL" \
-        || die "下载失败，请检查网络后重试"
-elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$TMP/pkg.tar.gz" "$PKG_URL" || die "下载失败，请检查网络后重试"
-else
-    die "系统里没有 curl 也没有 wget，请先装其中一个"
-fi
+
+fetch_file() {  # $1=url  $2=输出路径
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --connect-timeout 20 --retry 3 -o "$2" "$1"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "$2" "$1"
+    else
+        die "系统里没有 curl 也没有 wget，请先装其中一个"
+    fi
+}
+
+fetch_file "$PKG_URL" "$TMP/pkg.tar.gz" || die "下载失败，请检查网络后重试"
 
 tar -xzf "$TMP/pkg.tar.gz" -C "$TMP" || die "解压失败，下载的文件可能不完整"
 SRC="$(find "$TMP" -maxdepth 2 -type f -name aipai | head -1 | xargs -r dirname)"
@@ -148,8 +155,60 @@ fi
 [ -e /dev/net/tun ] || die "创建不出 /dev/net/tun。老内核可能没编 tun 模块，这种情况只能用别的机器做组网节点"
 
 # ---------- 5. 起容器 ----------
-echo "==> 拉取运行环境镜像（$IMAGE，第一次约 80MB）…"
-docker pull "$IMAGE" >/dev/null 2>&1 || die "镜像拉取失败，检查网络或 Docker 镜像源"
+# ---------- 5. 准备运行环境镜像 ----------
+# 国内网络经常拉不动 Docker Hub，所以分三级：官方镜像 → 国内加速器 → 官网自带的基础镜像包
+prepare_image() {
+    if docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull "$IMAGE" >/dev/null 2>&1; then
+        RUN_IMAGE="$IMAGE"
+        echo "==> 使用官方镜像 $IMAGE"
+        return 0
+    fi
+
+    echo "==> 官方镜像拉不动（国内网络常见），先给 Docker 配国内加速器再试…"
+    if [ -s /etc/docker/daemon.json ]; then
+        # 用户已有配置就别动（里面可能有 data-root、log-driver 之类的东西）
+        echo "    /etc/docker/daemon.json 已存在，不动它，直接走下面的兜底方案"
+    elif [ -n "$(docker ps -q 2>/dev/null)" ]; then
+        # 有容器在跑时重启 Docker 会打断它们，不值得为了配镜像源这么做
+        echo "    检测到正在运行的容器，不重启 Docker，直接走下面的兜底方案"
+    else
+        mkdir -p /etc/docker
+        cat > /etc/docker/daemon.json <<'JSON'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://docker.1ms.run",
+    "https://docker.xuanyuan.me",
+    "https://docker.1panel.live"
+  ]
+}
+JSON
+        echo "    已写入 /etc/docker/daemon.json（想撤销就删掉这个文件再重启 docker）"
+        systemctl restart docker >/dev/null 2>&1 || service docker restart >/dev/null 2>&1 || true
+        sleep 3
+        if docker pull "$IMAGE" >/dev/null 2>&1; then
+            RUN_IMAGE="$IMAGE"
+            echo "==> 加速器生效，使用官方镜像"
+            return 0
+        fi
+    fi
+
+    echo "==> 加速器也不行，改用官网自带的基础镜像包（约 50MB，不经过 Docker Hub）…"
+    if docker image inspect "$LOCAL_IMAGE" >/dev/null 2>&1; then
+        RUN_IMAGE="$LOCAL_IMAGE"
+        return 0
+    fi
+    fetch_file "$BASE_TGZ_URL" "$TMP/base.tar.xz" || return 1
+    docker import "$TMP/base.tar.xz" "$LOCAL_IMAGE" >/dev/null || return 1
+    RUN_IMAGE="$LOCAL_IMAGE"
+    echo "==> 基础镜像已导入：$LOCAL_IMAGE"
+    return 0
+}
+
+prepare_image || die "运行环境镜像怎么也准备不出来。可以手动执行看看：
+      docker pull debian:bookworm-slim
+    或直接下载 https://net.appiie.cn/download/aipai-base-jammy.tar.xz 后
+      docker import aipai-base-jammy.tar.xz $LOCAL_IMAGE"
 
 docker rm -f "$CNAME" >/dev/null 2>&1 || true
 
@@ -168,7 +227,7 @@ docker run -d --name "$CNAME" --restart unless-stopped \
     -e AIPAI_NETWORK="$NET_ARG" -e AIPAI_DEVICE_NAME="$NAME_ARG" \
     -e AIPAI_AUTOCONNECT=1 \
     -v "$DIR/app:/app" -v "$DIR/data:/root/.config/aipai" \
-    -w /app "$IMAGE" /app/aipai $CMD >/dev/null || die "容器启动失败"
+    -w /app "$RUN_IMAGE" /app/aipai $CMD >/dev/null || die "容器启动失败"
 
 sleep 6
 if [ -n "$(docker ps -q -f "name=^${CNAME}$")" ]; then
