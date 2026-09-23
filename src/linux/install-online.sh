@@ -59,6 +59,45 @@ ARCH="$(uname -m)"
 [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ] \
     || die "目前只提供 x86_64 版本，当前架构是 $ARCH"
 
+# 系统版本检查：客户端是 .NET 自包含程序，最低要 glibc 2.27 + GLIBCXX_3.4.22。
+# 老系统（CentOS 7 / Ubuntu 16.04）跑不起来，如果不在这一步拦住，
+# 用户会得到「装完了但服务起不来、aipai 命令报 GLIBC not found」这种莫名其妙的现场。
+ver_ge() {  # $1 >= $2 ？
+    awk -v a="$1" -v b="$2" 'BEGIN{
+        n=split(a,x,"."); m=split(b,y,".");
+        k=(n>m?n:m);
+        for(i=1;i<=k;i++){ xa=(i<=n?x[i]+0:0); yb=(i<=m?y[i]+0:0);
+            if(xa>yb) exit 0; if(xa<yb) exit 1 }
+        exit 0 }'
+}
+
+GLIBC_VER="$(ldd --version 2>/dev/null | head -n1 | awk '{print $NF}')"
+case "$GLIBC_VER" in ''|*[!0-9.]*) GLIBC_VER="0" ;; esac
+
+LIBCXX_VER="$(strings /usr/lib64/libstdc++.so.6 2>/dev/null \
+    | grep -o 'GLIBCXX_3\.4\.[0-9]\+' | sort -V | tail -n1 | sed 's/^GLIBCXX_//')"
+[ -n "$LIBCXX_VER" ] || LIBCXX_VER="$(strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 2>/dev/null \
+    | grep -o 'GLIBCXX_3\.4\.[0-9]\+' | sort -V | tail -n1 | sed 's/^GLIBCXX_//')"
+[ -n "$LIBCXX_VER" ] || LIBCXX_VER="0"
+
+if ! ver_ge "$GLIBC_VER" "2.27" || ! ver_ge "$LIBCXX_VER" "3.4.22"; then
+    echo "✗ 这台机器的运行库太旧，跑不了客户端" >&2
+    echo "    当前：glibc $GLIBC_VER，libstdc++ GLIBCXX_$LIBCXX_VER" >&2
+    echo "    需要：glibc ≥ 2.27 且 GLIBCXX ≥ 3.4.22" >&2
+    echo "    也就是 CentOS 8+/Rocky 8+/Alma 8+/Ubuntu 18.04+/Debian 10+/飞牛 fnOS。" >&2
+    echo "    CentOS 7、Ubuntu 16.04 这类老系统不支持（客户端是 .NET 自包含程序，官方最低就这个线）。" >&2
+    echo >&2
+    echo "  三个办法，任选一个：" >&2
+    echo "  1) 换系统（推荐）：CentOS 7 已经停止维护，装 Rocky Linux 9 或 Ubuntu 22.04 最省事" >&2
+    echo "  2) 用 Docker 跑（不改系统，容器里跑，组网网卡还是建在这台机器上）：" >&2
+    echo "       curl -fsSL $BASE/download/install-docker.sh | sudo bash -s -- \\" >&2
+    echo "            --user=账号 --password=密码 --network=适配码" >&2
+    echo "  3) 换一台系统新一点的机器当组网节点" >&2
+    echo >&2
+    echo "  详情见 https://net.appiie.cn/?p=xiazai" >&2
+    exit 1
+fi
+
 echo "==> 艾派互联 Linux 客户端 一键安装"
 echo "    安装目录：$PREFIX"
 

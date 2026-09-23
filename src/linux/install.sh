@@ -26,6 +26,38 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+# 系统版本检查：客户端是 .NET 自包含程序，最低要 glibc 2.27 + GLIBCXX_3.4.22。
+# 老系统（CentOS 7 / Ubuntu 16.04）直装跑不起来，先在这里拦住并给出办法。
+ver_ge() {  # $1 >= $2 ？
+    awk -v a="$1" -v b="$2" 'BEGIN{
+        n=split(a,x,"."); m=split(b,y,".");
+        k=(n>m?n:m);
+        for(i=1;i<=k;i++){ xa=(i<=n?x[i]+0:0); yb=(i<=m?y[i]+0:0);
+            if(xa>yb) exit 0; if(xa<yb) exit 1 }
+        exit 0 }'
+}
+
+GLIBC_VER="$(ldd --version 2>/dev/null | head -n1 | awk '{print $NF}')"
+case "$GLIBC_VER" in ''|*[!0-9.]*) GLIBC_VER="0" ;; esac
+LIBCXX_VER="$(strings /usr/lib64/libstdc++.so.6 2>/dev/null \
+    | grep -o 'GLIBCXX_3\.4\.[0-9]\+' | sort -V | tail -n1 | sed 's/^GLIBCXX_//')"
+[ -n "$LIBCXX_VER" ] || LIBCXX_VER="$(strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 2>/dev/null \
+    | grep -o 'GLIBCXX_3\.4\.[0-9]\+' | sort -V | tail -n1 | sed 's/^GLIBCXX_//')"
+[ -n "$LIBCXX_VER" ] || LIBCXX_VER="0"
+
+if ! ver_ge "$GLIBC_VER" "2.27" || ! ver_ge "$LIBCXX_VER" "3.4.22"; then
+    echo "✗ 这台机器的运行库太旧，装上也跑不了"
+    echo "    当前：glibc $GLIBC_VER，libstdc++ GLIBCXX_$LIBCXX_VER"
+    echo "    需要：glibc ≥ 2.27 且 GLIBCXX ≥ 3.4.22"
+    echo "    也就是 CentOS 8+/Rocky 8+/Ubuntu 18.04+/Debian 10+/飞牛 fnOS；CentOS 7 不支持。"
+    echo
+    echo "  老系统请改用 Docker 方式（一行命令）："
+    echo "    curl -fsSL https://net.appiie.cn/download/install-docker.sh | sudo bash -s -- \\"
+    echo "         --user=账号 --password=密码 --network=适配码"
+    echo "  详情见 https://net.appiie.cn/?p=xiazai"
+    exit 1
+fi
+
 echo "==> 安装到 $PREFIX"
 mkdir -p "$PREFIX/engine"
 cp -f aipai "$PREFIX/aipai"
