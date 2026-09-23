@@ -219,18 +219,39 @@ else
 fi
 
 echo "==> 启动客户端（容器名 $CNAME）…"
-# shellcheck disable=SC2086
-docker run -d --name "$CNAME" --restart unless-stopped \
-    --network host --cap-add NET_ADMIN --cap-add NET_RAW \
-    --device /dev/net/tun \
-    -e AIPAI_USER="$USER_ARG" -e AIPAI_PASSWORD="$PASS_ARG" \
-    -e AIPAI_NETWORK="$NET_ARG" -e AIPAI_DEVICE_NAME="$NAME_ARG" \
-    -e AIPAI_AUTOCONNECT=1 \
-    -v "$DIR/app:/app" -v "$DIR/data:/root/.config/aipai" \
-    -w /app "$RUN_IMAGE" /app/aipai $CMD >/dev/null || die "容器启动失败"
+is_running() {  # 用 inspect 判断，比 docker ps --filter name=^x$ 靠谱：
+                # 老版 Docker（1.13 等）的 name 过滤不支持正则，会匹配不到而误判
+    [ "$(docker inspect -f '{{.State.Running}}' "$CNAME" 2>/dev/null)" = "true" ]
+}
 
-sleep 6
-if [ -n "$(docker ps -q -f "name=^${CNAME}$")" ]; then
+COMPAT_ARGS=""
+start_once() {
+    docker rm -f "$CNAME" >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
+    docker run -d --name "$CNAME" --restart unless-stopped \
+        --network host --cap-add NET_ADMIN --cap-add NET_RAW \
+        --device /dev/net/tun $COMPAT_ARGS \
+        -e AIPAI_USER="$USER_ARG" -e AIPAI_PASSWORD="$PASS_ARG" \
+        -e AIPAI_NETWORK="$NET_ARG" -e AIPAI_DEVICE_NAME="$NAME_ARG" \
+        -e AIPAI_AUTOCONNECT=1 \
+        -v "$DIR/app:/app" -v "$DIR/data:/root/.config/aipai" \
+        -w /app "$RUN_IMAGE" /app/aipai $CMD >/dev/null 2>&1 || return 1
+    sleep 6
+    is_running
+}
+
+if ! start_once; then
+    # 老系统上常见两种坑：Docker 1.13 的 seccomp 策略拦了 .NET 需要的系统调用；
+    # 或者老内核上 .NET 的 W^X 起不来（报 Failed to create CoreCLR）。
+    # 这两种都用「兼容模式」再试一次（放开 seccomp、关掉 W^X、关服务器 GC）。
+    if docker logs "$CNAME" 2>&1 | grep -q 'Failed to create CoreCLR'; then
+        echo "==> 客户端在老环境下起不来，用兼容模式重试（放开 seccomp、关掉 W^X）…"
+        COMPAT_ARGS="--security-opt seccomp=unconfined -e DOTNET_EnableWriteXorExecute=0 -e DOTNET_gcServer=0 --ulimit memlock=-1"
+        start_once || true
+    fi
+fi
+
+if is_running; then
     echo "✓ 已启动"
     echo
     docker logs --tail 8 "$CNAME" 2>&1 | sed 's/^/    /' || true
@@ -246,6 +267,5 @@ if [ -n "$(docker ps -q -f "name=^${CNAME}$")" ]; then
 else
     echo "! 容器没起来，下面是最后的日志：" >&2
     docker logs --tail 30 "$CNAME" 2>&1 | sed 's/^/    /' >&2 || true
-    echo "  常见原因：账号密码不对、适配码不存在、节点连不上。" >&2
     exit 1
 fi
