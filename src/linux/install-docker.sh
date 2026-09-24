@@ -73,16 +73,48 @@ if ! command -v docker >/dev/null 2>&1; then
     elif command -v dnf >/dev/null 2>&1; then
         dnf install -y docker || die "Docker 装不上，请手动安装后重跑本脚本"
     elif command -v yum >/dev/null 2>&1; then
-        if ! yum install -y docker; then
-            # CentOS 7 已停止维护，官方 mirrorlist 大面积 404，切到 vault 归档源再试一次
-            if grep -q 'release 7' /etc/redhat-release 2>/dev/null; then
-                echo "==> CentOS 7 官方源已下线，切到 vault 归档源后重试…"
-                sed -i 's|^mirrorlist=|#mirrorlist=|; s|^#\?baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|' /etc/yum.repos.d/CentOS-*.repo 2>/dev/null || true
-                yum clean all >/dev/null 2>&1 || true
-                yum install -y docker \
-                    || die "Docker 装不上，请手动安装：https://docs.docker.com/engine/install/"
-            else
-                die "Docker 装不上，请手动安装：https://docs.docker.com/engine/install/"
+        # CentOS 7 官方源 2024 年就下线了，yum 会卡在失效镜像上很久，
+        # 所以先把 CentOS 自己的 repo 切到 vault 归档源（先备份原文件）再装。
+        if grep -q 'release 7' /etc/redhat-release 2>/dev/null \
+           && grep -rqs 'mirror\.centos\.org' /etc/yum.repos.d/ 2>/dev/null; then
+            echo "==> CentOS 7 官方源已下线，先把源切到 vault 归档源（原文件备份为 *.bak-aipai）…"
+            for f in /etc/yum.repos.d/CentOS-*.repo; do
+                [ -e "$f" ] || continue
+                [ -e "$f.bak-aipai" ] || cp -f "$f" "$f.bak-aipai"
+                sed -i 's|^mirrorlist=|#mirrorlist=|; s|^#\?baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|' "$f"
+            done
+            yum clean all >/dev/null 2>&1 || true
+        fi
+
+        # 有别的 yum 在跑时 yum 会一直等锁，先把话说清楚，最多等 10 分钟
+        if [ -r /var/run/yum.pid ]; then
+            yum_pid="$(cat /var/run/yum.pid 2>/dev/null)"
+            if [ -n "$yum_pid" ] && kill -0 "$yum_pid" 2>/dev/null; then
+                echo "    注意：另一个 yum 正在运行（PID $yum_pid），它跑完之前装不了 Docker。"
+                echo "    如果那个进程已经卡死，可以 kill $yum_pid 之后重跑本脚本；下面最多等 10 分钟。"
+            fi
+        fi
+
+        timeout 600 yum install -y docker
+        rc=$?
+        if [ "$rc" = "130" ]; then
+            die "已取消（你按了 Ctrl+C）"
+        elif [ "$rc" = "124" ]; then
+            die "yum 等了 10 分钟没动静——多半是另一个 yum 占着锁，或者源不可达。处理完再重跑本脚本"
+        elif [ "$rc" != "0" ]; then
+            # 再试一次：阿里云的 docker-ce 源（CentOS 7 上能装到新版 Docker，比自带的 1.13 省心）
+            echo "==> 再试一次：走阿里云的 docker-ce 源装新版 Docker…"
+            cat > /etc/yum.repos.d/docker-ce-aliyun.repo <<'REPO'
+[docker-ce-aliyun]
+name=Docker CE (aliyun mirror)
+baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/7/x86_64/stable/
+enabled=1
+gpgcheck=1
+gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
+REPO
+            timeout 600 yum install -y docker-ce docker-ce-cli containerd.io || true
+            if ! command -v docker >/dev/null 2>&1; then
+                die "Docker 装不上。可以手动执行 yum install -y docker，装好后再重跑本脚本"
             fi
         fi
     else
