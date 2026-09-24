@@ -273,14 +273,12 @@ start_once() {
 }
 
 if ! start_once; then
-    # 老系统上常见两种坑：Docker 1.13 的 seccomp 策略拦了 .NET 需要的系统调用；
-    # 或者老内核上 .NET 的 W^X 起不来（报 Failed to create CoreCLR）。
-    # 这两种都用「兼容模式」再试一次（放开 seccomp、关掉 W^X、关服务器 GC）。
-    if docker logs "$CNAME" 2>&1 | grep -q 'Failed to create CoreCLR'; then
-        echo "==> 客户端在老环境下起不来，用兼容模式重试（放开 seccomp、关掉 W^X）…"
-        COMPAT_ARGS="--security-opt seccomp=unconfined -e DOTNET_EnableWriteXorExecute=0 -e DOTNET_gcServer=0 --ulimit memlock=-1"
-        start_once || true
-    fi
+    # 第一次没起来就直接用「兼容模式」再试一次。老系统上常见两种坑：
+    # Docker 1.13 的 seccomp 策略拦了 .NET 需要的系统调用；老内核上 .NET 的 W^X 起不来。
+    # 这组参数在正常环境上验证过不会把能跑的搞坏，所以不必先判断日志内容。
+    echo "==> 第一次没起来，用兼容模式重试（放开 seccomp、关掉 W^X、限制托管堆）…"
+    COMPAT_ARGS="--security-opt seccomp=unconfined -e DOTNET_EnableWriteXorExecute=0 -e DOTNET_gcServer=0 -e DOTNET_GCHeapHardLimitHex=0x14000000 --ulimit memlock=-1"
+    start_once || true
 fi
 
 if is_running; then
@@ -288,10 +286,26 @@ if is_running; then
     echo
     docker logs --tail 8 "$CNAME" 2>&1 | sed 's/^/    /' || true
     echo
+
+    # 宿主机上没有 aipai 命令，装一个转发脚本，让它直接进容器执行
+    cat > /usr/local/bin/aipai <<'WRAP'
+#!/bin/sh
+# 艾派互联（Docker 方式）：把命令转发到容器里执行
+#   aipai status / aipai list / aipai devices ...
+if [ -t 0 ]; then
+    exec docker exec -it aipai /app/aipai "$@"
+else
+    exec docker exec -i aipai /app/aipai "$@"
+fi
+WRAP
+    chmod +x /usr/local/bin/aipai
+
     if [ "$WANT_WEB" = "1" ]; then
         IP_SHOW="$(hostname -I 2>/dev/null | awk '{print $1}')"
         echo "  网页面板： http://${IP_SHOW:-这台机器的IP}:$WEB_PORT/"
     fi
+    echo "  查看状态： aipai status        （对端是直连还是中继）"
+    echo "  我的组网： aipai list          （本机固定 IP）"
     echo "  查看日志： docker logs -f $CNAME"
     echo "  重启容器： docker restart $CNAME"
     echo "  停止容器： docker stop $CNAME"
@@ -299,5 +313,19 @@ if is_running; then
 else
     echo "! 容器没起来，下面是最后的日志：" >&2
     docker logs --tail 30 "$CNAME" 2>&1 | sed 's/^/    /' >&2 || true
+    if docker logs "$CNAME" 2>&1 | grep -q 'Failed to create CoreCLR'; then
+        echo >&2
+        echo "  日志里是 .NET 起不来（核心提示），这台机器上多半是：内存不够，或 Docker 太老限制太严。" >&2
+        echo "  先看两个数： free -m        和      docker version --format '{{.Server.Version}}'" >&2
+        echo "  再手动用兼容模式起一次（把账号密码适配码换成你自己的）：" >&2
+        echo "    docker rm -f $CNAME" >&2
+        echo "    docker run -d --name $CNAME --restart unless-stopped \\" >&2
+        echo "      --network host --cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun \\" >&2
+        echo "      --security-opt seccomp=unconfined -e DOTNET_EnableWriteXorExecute=0 -e DOTNET_gcServer=0 \\" >&2
+        echo "      -e AIPAI_USER=账号 -e AIPAI_PASSWORD=密码 -e AIPAI_NETWORK=适配码 -e AIPAI_AUTOCONNECT=1 \\" >&2
+        echo "      -v $DIR/app:/app -v $DIR/data:/root/.config/aipai -w /app \\" >&2
+        echo "      $RUN_IMAGE /app/aipai connect" >&2
+        echo "    docker logs --tail 20 $CNAME" >&2
+    fi
     exit 1
 fi
