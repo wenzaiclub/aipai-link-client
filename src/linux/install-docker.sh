@@ -256,6 +256,27 @@ is_running() {  # 用 inspect 判断，比 docker ps --filter name=^x$ 靠谱：
     [ "$(docker inspect -f '{{.State.Running}}' "$CNAME" 2>/dev/null)" = "true" ]
 }
 
+# 起没起来不能只看一瞬間的 Running：配了 --restart 的容器崩了会自动重启，
+# 检查那一刻可能正好是 Running，看起来像"起来了"。所以要看日志和重启次数。
+check_health() {
+    n=0
+    while [ "$n" -lt 20 ]; do
+        if docker logs "$CNAME" 2>&1 | grep -q 'Failed to create CoreCLR'; then
+            return 1
+        fi
+        restarts="$(docker inspect -f '{{.RestartCount}}' "$CNAME" 2>/dev/null)"
+        if [ -n "$restarts" ] && [ "$restarts" != "0" ]; then
+            return 1      # 重启过 = 崩过
+        fi
+        if docker logs "$CNAME" 2>&1 | grep -qE '已接入组网|已连接「|本机固定IP|按 Ctrl\+C|网页管理面板已启动'; then
+            break         # 看到接入成功的标志，再确认一下还在跑
+        fi
+        sleep 1
+        n=$((n+1))
+    done
+    is_running
+}
+
 COMPAT_ARGS=""
 start_once() {
     docker rm -f "$CNAME" >/dev/null 2>&1 || true
@@ -268,8 +289,7 @@ start_once() {
         -e AIPAI_AUTOCONNECT=1 \
         -v "$DIR/app:/app" -v "$DIR/data:/root/.config/aipai" \
         -w /app "$RUN_IMAGE" /app/aipai $CMD >/dev/null 2>&1 || return 1
-    sleep 6
-    is_running
+    check_health
 }
 
 if ! start_once; then
@@ -315,13 +335,28 @@ else
     docker logs --tail 30 "$CNAME" 2>&1 | sed 's/^/    /' >&2 || true
     if docker logs "$CNAME" 2>&1 | grep -q 'Failed to create CoreCLR'; then
         echo >&2
-        echo "  日志里是 .NET 起不来（核心提示），这台机器上多半是：内存不够，或 Docker 太老限制太严。" >&2
-        echo "  先看两个数： free -m        和      docker version --format '{{.Server.Version}}'" >&2
-        echo "  再手动用兼容模式起一次（把账号密码适配码换成你自己的）：" >&2
+        echo "  .NET 运行时在这台机器上起不来（Failed to create CoreCLR）。现场数据：" >&2
+        mem_total="$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')"
+        mem_free="$(free -m 2>/dev/null | awk '/^Mem:/{print $7}')"
+        swap_total="$(free -m 2>/dev/null | awk '/^Swap:/{print $2}')"
+        echo "    内存：${mem_total:-?} MB（可用 ${mem_free:-?} MB）   交换分区：${swap_total:-?} MB" >&2
+        echo "    Docker：$(docker version --format '{{.Server.Version}}' 2>/dev/null | head -1)" >&2
+        echo "    容器安全参数：$(docker inspect -f '{{.HostConfig.SecurityOpt}}' "$CNAME" 2>/dev/null)" >&2
+        echo >&2
+        if [ -n "$mem_total" ] && [ "$mem_total" -lt 900 ] 2>/dev/null; then
+            echo "  这台内存不到 1G，很可能是 .NET 启动时内存不够。先加一块 1G 交换分区再试：" >&2
+            echo "    dd if=/dev/zero of=/swapfile bs=1M count=1024" >&2
+            echo "    chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile" >&2
+            echo "    echo '/swapfile none swap sw 0 0' >> /etc/fstab" >&2
+            echo "    然后重跑本脚本；还是不行就换台内存大点的机器。" >&2
+            echo >&2
+        fi
+        echo "  也可以手动用兼容模式起一次（账号密码适配码换成你自己的）：" >&2
         echo "    docker rm -f $CNAME" >&2
         echo "    docker run -d --name $CNAME --restart unless-stopped \\" >&2
         echo "      --network host --cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun \\" >&2
         echo "      --security-opt seccomp=unconfined -e DOTNET_EnableWriteXorExecute=0 -e DOTNET_gcServer=0 \\" >&2
+        echo "      -e DOTNET_GCHeapHardLimitHex=0x14000000 \\" >&2
         echo "      -e AIPAI_USER=账号 -e AIPAI_PASSWORD=密码 -e AIPAI_NETWORK=适配码 -e AIPAI_AUTOCONNECT=1 \\" >&2
         echo "      -v $DIR/app:/app -v $DIR/data:/root/.config/aipai -w /app \\" >&2
         echo "      $RUN_IMAGE /app/aipai connect" >&2
